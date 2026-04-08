@@ -1,6 +1,48 @@
 package main
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+	"runtime"
+	"sync"
+	"sync/atomic"
+)
+
+type forgeResult struct {
+	msgString string
+	sig       Signature
+}
+
+func tryNonce(nonce uint64, rows [][256]uint8, sigslice []Signature, fixedBits []uint8) (bool, Signature, string) {
+	msgString := fmt.Sprintf("Emanoel forge %d", nonce)
+	msg := GetMessageFromString(msgString)
+	forgedRows := pickRows(msg)
+
+	for _, v := range fixedBits {
+		if forgedRows[v] != rows[0][v] {
+			return false, Signature{}, ""
+		}
+	}
+
+	var sig Signature
+	for i := range 256 {
+		desiredRow := forgedRows[i]
+		// found := false
+		for r := range rows {
+			if rows[r][i] == desiredRow {
+				sig.Preimage[i] = sigslice[r].Preimage[i]
+				// found = true
+				break
+			}
+		}
+
+		// if !found {
+		// 	return false, Signature{}, ""
+		// }
+	}
+	fmt.Printf("Found nonce %d\n", nonce)
+	return true, sig, msgString
+}
 
 /*
 A note about the provided keys and signatures:
@@ -119,7 +161,7 @@ func Forge() (string, Signature, error) {
 	fmt.Printf("ok 3: %v\n", Verify(msgslice[2], pub, sig3))
 	fmt.Printf("ok 4: %v\n", Verify(msgslice[3], pub, sig4))
 
-	var sig Signature
+	// var sig Signature
 
 	var rows [][256]uint8
 
@@ -128,51 +170,117 @@ func Forge() (string, Signature, error) {
 	rows = append(rows, pickRows(GetMessageFromString("3")))
 	rows = append(rows, pickRows(GetMessageFromString("4")))
 
+	var fixedBits []uint8
+	for i := range 256 {
+		baseValue := rows[0][i]
+		isFixed := true
+		for r := range rows {
+			if rows[r][i] != baseValue {
+				isFixed = false
+				break
+			}
+		}
+		if isFixed {
+			fixedBits = append(fixedBits, uint8(i))
+		}
+	}
+	fmt.Printf("Number of fixed bits: %d\n", len(fixedBits))
+
 	// fmt.Printf("rows1: %0b\n", rows1)
 	// fmt.Printf("rows2: %0b\n", rows2)
 	// fmt.Printf("rows3: %0b\n", rows3)
 	// fmt.Printf("rows4: %0b\n", rows4)
 
-	var nonce uint64 = 0;
-	var msgString string
-	for {
-		cracked := true;
-		for i := range 256 {
-			msgString = fmt.Sprintf("Forgery by Emanoel %d", nonce)
-			msg := GetMessageFromString(msgString)
-			forgedRows := pickRows(msg)
+	// begining of multithreaded code
+	numWorkers := runtime.NumCPU()
+	jobs := make(chan uint64, 1000) // Buffered channel for better throughput
+	results := make(chan forgeResult, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	var wg sync.WaitGroup
+	var nonceCounter int64
+	wg.Add(numWorkers)
 
-			found := false
-			currDesiredRow := forgedRows[i]
-			for r := range rows {
-				if rows[r][i] == currDesiredRow {
-					sig.Preimage[i] = sigslice[r].Preimage[i]
-					found = true
+	for range numWorkers {
+		go func() {
+			defer wg.Done()
+			for nonce := range jobs {
+				atomic.AddInt64(&nonceCounter, 1)
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				ok, sig, msgString := tryNonce(nonce, rows, sigslice, fixedBits)
+				if ok {
+					select {
+					case results <- forgeResult{msgString, sig}:
+						cancel()
+					case <-ctx.Done():
+					}
+					return
 				}
 			}
-			
-			if !found {
-				cracked = false
-				break;
-			}
-
-		}
-
-		if cracked {
-			break
-		}
-
-		nonce++
+		}()
 	}
 
+	go func() {
+		for nonce := uint64(0); ; nonce++ {
+			select {
+			case <-ctx.Done():
+				close(jobs)
+				return
+			case jobs <- nonce:
+			}
+		}
+	}()
 
+	res := <-results
+	cancel()
+	wg.Wait()
+	fmt.Printf("Checked %d nonces\n", atomic.LoadInt64(&nonceCounter))
 
-	// your code here!
-	// ==
-	// Geordi La
-	// ==
+	return res.msgString, res.sig, nil
+	// end of multithreaded code
 
-	return msgString, sig, nil
+	// var nonce uint64 = 0;
+	// var msgString string
+	// for {
+	// 	cracked := true;
+	// 	for i := range 256 {
+	// 		msgString = fmt.Sprintf("Forgery by Emanoel %d", nonce)
+	// 		msg := GetMessageFromString(msgString)
+	// 		forgedRows := pickRows(msg)
+
+	// 		found := false
+	// 		currDesiredRow := forgedRows[i]
+	// 		for r := range rows {
+	// 			if rows[r][i] == currDesiredRow {
+	// 				sig.Preimage[i] = sigslice[r].Preimage[i]
+	// 				found = true
+	// 			}
+	// 		}
+
+	// 		if !found {
+	// 			cracked = false
+	// 			break;
+	// 		}
+
+	// 	}
+
+	// 	if cracked {
+	// 		break
+	// 	}
+
+	// 	nonce++
+	// }
+
+	// // your code here!
+	// // ==
+	// // Geordi La
+	// // ==
+
+	// return msgString, sig, nil
 
 }
 
