@@ -26,6 +26,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 )
 
 func main() {
@@ -245,9 +246,13 @@ func Sign(msg Message, sec SecretKey) Signature {
 
 	for i, v := range sec.OnePre {
 		fmt.Printf("i: %d\n", i)
-		fmt.Printf("major idx: %d\t", int(i/8))
-		fmt.Printf("minor idx: %d\n", i%8)
-		secRowToChoose := byte(i % 8) & msg[int(i / 8)]
+		fmt.Printf("major idx: %d\t", uint8(i/8))
+		fmt.Printf("minor idx: %d\t", i%8)
+		fmt.Printf("msg bytes: %08b\n", msg[uint8(i / 8)])
+		secRowToChoose := (byte(1) << (i % 8)) & msg[uint8(i / 8)]
+		if secRowToChoose != 0 {
+			secRowToChoose = 1
+		}
 		fmt.Print("secRowToChoose: ")
 		fmt.Printf("%d\n", secRowToChoose)
 		if secRowToChoose == 0 {
@@ -260,14 +265,35 @@ func Sign(msg Message, sec SecretKey) Signature {
 	return sig
 }
 
+func pickRows(msg Message, pub PublicKey) [256]uint8 {
+	var rows [256]uint8
+	for i := range 256 {
+		secRowToChoose := (byte(1) << (i % 8)) & msg[int(i / 8)]
+		rows[i] = uint8(math.Min(1, float64(secRowToChoose)))
+	}
+
+	return rows
+}
+
 // Verify takes a message, public key and signature, and returns a boolean
 // describing the validity of the signature.
 func Verify(msg Message, pub PublicKey, sig Signature) bool {
 
-	// Your code here
-	// ===
+	rows := pickRows(msg, pub)
 
-	// ===
-
+	for i := range 256 {
+		var pubToCompare Block 
+		if rows[i] == 0 {
+			pubToCompare = pub.ZeroHash[i]
+		} else {
+			pubToCompare = pub.OneHash[i]
+		}
+		if (!sig.Preimage[i].IsPreimage(pubToCompare)) {
+			fmt.Printf("Found an unmatching hash for preimage %d\n", i)
+			return false
+		}
+	}
+	
 	return true
+
 }
