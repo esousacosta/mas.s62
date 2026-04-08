@@ -21,9 +21,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 )
 
 func main() {
@@ -56,12 +58,12 @@ func main() {
 	fmt.Printf("Verify worked? %v\n", worked)
 
 	// Forge signature
-	msgString, sig, err := Forge()
+	// msgString, sig, err := Forge()
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("forged msg: %s sig: %s\n", msgString, sig.ToHex())
+	// fmt.Printf("forged msg: %s sig: %s\n", msgString, sig.ToHex())
 
 	return
 }
@@ -220,10 +222,20 @@ func GenerateKey() (SecretKey, PublicKey, error) {
 	var sec SecretKey
 	var pub PublicKey
 
-	// Your code here
-	// ===
+	var randGenerator io.Reader = rand.Reader
+	fmt.Println("Generating the key!")
 
-	// ===
+	// fill up the secret key with random numbers
+	for i := range sec.ZeroPre {
+		randGenerator.Read(sec.ZeroPre[i][:])
+		randGenerator.Read(sec.OnePre[i][:])
+	}
+
+	for i := range sec.OnePre {
+		pub.ZeroHash[i] = sha256.Sum256(sec.ZeroPre[i][:])
+		pub.OneHash[i] = sha256.Sum256(sec.OnePre[i][:])
+	}
+
 	return sec, pub, nil
 }
 
@@ -231,10 +243,20 @@ func GenerateKey() (SecretKey, PublicKey, error) {
 func Sign(msg Message, sec SecretKey) Signature {
 	var sig Signature
 
-	// Your code here
-	// ===
+	for i, v := range sec.OnePre {
+		fmt.Printf("i: %d\n", i)
+		fmt.Printf("major idx: %d\t", int(i/8))
+		fmt.Printf("minor idx: %d\n", i%8)
+		secRowToChoose := byte(i % 8) & msg[int(i / 8)]
+		fmt.Print("secRowToChoose: ")
+		fmt.Printf("%d\n", secRowToChoose)
+		if secRowToChoose == 0 {
+			sig.Preimage[i] = sec.ZeroPre[i]
+		} else {
+			sig.Preimage[i] = v
+		}
+	}
 
-	// ===
 	return sig
 }
 
