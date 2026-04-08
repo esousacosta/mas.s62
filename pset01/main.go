@@ -26,7 +26,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math"
 )
 
 func main() {
@@ -113,7 +112,7 @@ func HexToPubkey(s string) (PublicKey, error) {
 	// first, make sure hex string is of correct length
 	if len(s) != expectedLength {
 		return p, fmt.Errorf(
-			"Pubkey string %d characters, expect %d", expectedLength)
+			"Pubkey string %d characters, expect %d", len(s), expectedLength)
 	}
 
 	// decode from hex to a byte slice
@@ -191,7 +190,7 @@ func HexToSignature(s string) (Signature, error) {
 	// first, make sure hex string is of correct length
 	if len(s) != expectedLength {
 		return sig, fmt.Errorf(
-			"Pubkey string %d characters, expect %d", expectedLength)
+			"Pubkey string %d characters, expect %d", len(s), expectedLength)
 	}
 
 	// decode from hex to a byte slice
@@ -203,7 +202,9 @@ func HexToSignature(s string) (Signature, error) {
 	buf := bytes.NewBuffer(bts)
 
 	for i, _ := range sig.Preimage {
-		sig.Preimage[i] = BlockFromByteSlice(buf.Next(32))
+		var currBlock []byte = buf.Next(32)
+		fmt.Printf("Current block from signature: %064x\n", currBlock)
+		sig.Preimage[i] = BlockFromByteSlice(currBlock)
 	}
 	return sig, nil
 }
@@ -224,7 +225,7 @@ func GenerateKey() (SecretKey, PublicKey, error) {
 	var pub PublicKey
 
 	var randGenerator io.Reader = rand.Reader
-	fmt.Println("Generating the key!")
+	// fmt.Println("Generating the key!")
 
 	// fill up the secret key with random numbers
 	for i := range sec.ZeroPre {
@@ -244,32 +245,29 @@ func GenerateKey() (SecretKey, PublicKey, error) {
 func Sign(msg Message, sec SecretKey) Signature {
 	var sig Signature
 
-	for i, v := range sec.OnePre {
-		fmt.Printf("i: %d\n", i)
-		fmt.Printf("major idx: %d\t", uint8(i/8))
-		fmt.Printf("minor idx: %d\t", i%8)
-		fmt.Printf("msg bytes: %08b\n", msg[uint8(i / 8)])
-		secRowToChoose := (byte(1) << (i % 8)) & msg[uint8(i / 8)]
-		if secRowToChoose != 0 {
-			secRowToChoose = 1
-		}
-		fmt.Print("secRowToChoose: ")
-		fmt.Printf("%d\n", secRowToChoose)
+	for i := range sec.OnePre {
+		// fmt.Printf("i: %d\n", i)
+		// fmt.Printf("major idx: %d\t", uint8(i/8))
+		// fmt.Printf("minor idx: %d\t", i%8)
+		// fmt.Printf("msg bytes: %08b\n", msg[uint8(i / 8)])
+		secRowToChoose := (msg[int(i / 8)]>>(7-(i%8))) & 0x01
+		// fmt.Print("secRowToChoose: ")
+		// fmt.Printf("%d\n", secRowToChoose)
 		if secRowToChoose == 0 {
 			sig.Preimage[i] = sec.ZeroPre[i]
 		} else {
-			sig.Preimage[i] = v
+			sig.Preimage[i] = sec.OnePre[i]
 		}
 	}
 
 	return sig
 }
 
-func pickRows(msg Message, pub PublicKey) [256]uint8 {
+func pickRows(msg Message) [256]uint8 {
 	var rows [256]uint8
 	for i := range 256 {
-		secRowToChoose := (byte(1) << (i % 8)) & msg[int(i / 8)]
-		rows[i] = uint8(math.Min(1, float64(secRowToChoose)))
+		secRowToChoose := (msg[int(i / 8)]>>(7-(i%8))) & 0x01
+		rows[i] = secRowToChoose
 	}
 
 	return rows
@@ -279,7 +277,7 @@ func pickRows(msg Message, pub PublicKey) [256]uint8 {
 // describing the validity of the signature.
 func Verify(msg Message, pub PublicKey, sig Signature) bool {
 
-	rows := pickRows(msg, pub)
+	rows := pickRows(msg)
 
 	for i := range 256 {
 		var pubToCompare Block 
@@ -289,7 +287,7 @@ func Verify(msg Message, pub PublicKey, sig Signature) bool {
 			pubToCompare = pub.OneHash[i]
 		}
 		if (!sig.Preimage[i].IsPreimage(pubToCompare)) {
-			fmt.Printf("Found an unmatching hash for preimage %d\n", i)
+			// fmt.Printf("Found an unmatching hash for preimage %d\n", i)
 			return false
 		}
 	}

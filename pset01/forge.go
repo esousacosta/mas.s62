@@ -119,8 +119,53 @@ func Forge() (string, Signature, error) {
 	fmt.Printf("ok 3: %v\n", Verify(msgslice[2], pub, sig3))
 	fmt.Printf("ok 4: %v\n", Verify(msgslice[3], pub, sig4))
 
-	msgString := "my forged message"
 	var sig Signature
+
+	var rows [][256]uint8
+
+	rows = append(rows, pickRows(GetMessageFromString("1")))
+	rows = append(rows, pickRows(GetMessageFromString("2")))
+	rows = append(rows, pickRows(GetMessageFromString("3")))
+	rows = append(rows, pickRows(GetMessageFromString("4")))
+
+	// fmt.Printf("rows1: %0b\n", rows1)
+	// fmt.Printf("rows2: %0b\n", rows2)
+	// fmt.Printf("rows3: %0b\n", rows3)
+	// fmt.Printf("rows4: %0b\n", rows4)
+
+	var nonce uint64 = 0;
+	var msgString string
+	for {
+		cracked := true;
+		for i := range 256 {
+			msgString = fmt.Sprintf("Forgery by Emanoel %d", nonce)
+			msg := GetMessageFromString(msgString)
+			forgedRows := pickRows(msg)
+
+			found := false
+			currDesiredRow := forgedRows[i]
+			for r := range rows {
+				if rows[r][i] == currDesiredRow {
+					sig.Preimage[i] = sigslice[r].Preimage[i]
+					found = true
+				}
+			}
+			
+			if !found {
+				cracked = false
+				break;
+			}
+
+		}
+
+		if cracked {
+			break
+		}
+
+		nonce++
+	}
+
+
 
 	// your code here!
 	// ==
@@ -132,4 +177,4 @@ func Forge() (string, Signature, error) {
 }
 
 // hint:
-// arr[i/8]>>(7-(i%8)))&0x01
+// (arr[i/8]>>(7-(i%8)))&0x01
