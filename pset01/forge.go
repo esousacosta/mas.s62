@@ -184,7 +184,43 @@ func Forge() (string, Signature, error) {
 			fixedBits = append(fixedBits, uint8(i))
 		}
 	}
-	fmt.Printf("Number of fixed bits: %d\n", len(fixedBits))
+
+	// Implement this:
+	/*
+	// Precompute which bytes and which bits matter
+type byteMask struct {
+    byteIdx  uint8
+    mask     uint8  // which bits are fixed
+    expected uint8  // what those bits should be
+}
+
+// For each fixed bit, accumulate byte masks
+var byteMasks [32]byteMask
+
+for _, i := range fixedBits {
+    byteIdx := i / 8
+    bitIdx := i % 8
+    byteMasks[byteIdx].mask |= (1 << (7 - bitIdx))
+    if rows[0][i] == 1 {
+        byteMasks[byteIdx].expected |= (1 << (7 - bitIdx))
+    }
+}
+
+// In tryNonce, check only the bytes with fixed bits:
+for byteIdx := range 32 {
+    if byteMasks[byteIdx].mask != 0 {
+        msgByte := msg[byteIdx]
+        if (msgByte & byteMasks[byteIdx].mask) != byteMasks[byteIdx].expected {
+            return false, Signature{}, ""
+        }
+    }
+}
+	*/
+
+	for _, i := range fixedBits {
+		byteIdx := i / 8
+		bitIdx := i % 8
+	}
 
 	// fmt.Printf("rows1: %0b\n", rows1)
 	// fmt.Printf("rows2: %0b\n", rows2)
@@ -242,46 +278,6 @@ func Forge() (string, Signature, error) {
 
 	return res.msgString, res.sig, nil
 	// end of multithreaded code
-
-	// var nonce uint64 = 0;
-	// var msgString string
-	// for {
-	// 	cracked := true;
-	// 	for i := range 256 {
-	// 		msgString = fmt.Sprintf("Forgery by Emanoel %d", nonce)
-	// 		msg := GetMessageFromString(msgString)
-	// 		forgedRows := pickRows(msg)
-
-	// 		found := false
-	// 		currDesiredRow := forgedRows[i]
-	// 		for r := range rows {
-	// 			if rows[r][i] == currDesiredRow {
-	// 				sig.Preimage[i] = sigslice[r].Preimage[i]
-	// 				found = true
-	// 			}
-	// 		}
-
-	// 		if !found {
-	// 			cracked = false
-	// 			break;
-	// 		}
-
-	// 	}
-
-	// 	if cracked {
-	// 		break
-	// 	}
-
-	// 	nonce++
-	// }
-
-	// // your code here!
-	// // ==
-	// // Geordi La
-	// // ==
-
-	// return msgString, sig, nil
-
 }
 
 // hint:
